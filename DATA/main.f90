@@ -1,9 +1,6 @@
-! ****************************************************************************
-!          Molecular Dynamics code to simulate at NVP collectivity 
-!          a system of N atoms of Ar inside a cubic box, interacting
-!          through a truncated Lennard-Jones force field at 2.5 sigma. 
-!          Leap-frog Verlet integration algorithm.
-!****************************************************************************
+! Monte Carlo simulation of an isobaric-isothermic (N, P, T) collectivity
+! Updated in 30/08/2024 Fernando Muñoz
+
 PROGRAM mc_npt
     IMPLICIT NONE
     ! PARAMETERS
@@ -12,25 +9,25 @@ PROGRAM mc_npt
     DOUBLE PRECISION, PARAMETER :: r_crit_gdr = 5
     DOUBLE PRECISION, PARAMETER :: dr_gdr = r_crit_gdr / nbins_gdr
     DOUBLE PRECISION, PARAMETER :: PI = 4.d0*ATAN(1.d0)
-    !
-    INTEGER :: ii
     ! CONFIGURATION
     INTEGER :: n_steps, freq_sample, n_atoms
     DOUBLE PRECISION :: mass, t_ref, sigma, eps, dr, dv, p_ref, l, beta
-    ! 
+    ! ARRAYS
     DOUBLE PRECISION, ALLOCATABLE :: r(:, :)
     DOUBLE PRECISION, ALLOCATABLE :: gdr(:)
-    !
-    DOUBLE PRECISION :: Ptail, Ptail_rho2, Utail, Utail_rho
-    DOUBLE PRECISION :: denom_nid
-    !
-    !
-    INTEGER :: sample_counter = 0, attempts_r = 0, attempts_v = 0
+    ! ENERGY AND PRESSURE
+    DOUBLE PRECISION :: u_tail, u_tail_rho, p_tail, p_tail_rho2
+    DOUBLE PRECISION :: u, p_pot, rho
+    DOUBLE PRECISION :: denom_nid, nid
+    ! COUNTERS
+    INTEGER :: sample_counter = 1, attempts_r = 0, attempts_v = 0
     INTEGER :: accepted_moves_v = 0, accepted_moves_r = 0
-    INTEGER :: rand_id, sample_counter
-    DOUBLE PRECISION :: Ptail, Utail
+    ! AUX
+    INTEGER :: ii
+    DOUBLE PRECISION :: rand
+    INTEGER :: rand_id
 
-    CALL RANDOM_SEED()
+    CALL RANDOM_INIT(REPEATABLE = .FALSE., IMAGE_DISTINCT=.TRUE.)
 
     CALL read_config(n_steps, freq_sample, n_atoms, mass, t_ref, &
                      sigma, eps, dr, dv, l, p_ref)
@@ -39,7 +36,7 @@ PROGRAM mc_npt
     CALL read_initial_positions(r, n_atoms, l)
 
     CALL reduce_units(n_atoms, r, l, t_ref, eps, sigma)
-    beta = 1/t_ref
+    beta = 1 / t_ref
 
     WRITE(*, *) "l: ", l
     WRITE(*, *) "t_ref: ", t_ref
@@ -48,22 +45,17 @@ PROGRAM mc_npt
     ALLOCATE(gdr(nbins_gdr))
     gdr = 0 
 
-    Ptail_rho2 = 16.d0/3.d0*PI*(2.d0/3.d0*(1/r_crit)**9-(1/r_crit)**3)
-    Utail_rho = 8.d0/3.d0*PI*n_atoms*(1.d0/3.d0*(1/r_crit)**9-(1/r_crit)**3)
+    p_tail_rho2 = 16.d0/3.d0*PI*(2.d0/3.d0*(1/r_crit)**9-(1/r_crit)**3)
+    u_tail_rho = 8.d0/3.d0*PI*n_atoms*(1.d0/3.d0*(1/r_crit)**9-(1/r_crit)**3)
 
-    denom_nid = ((1.d0*n_steps/freq_sample)*n_atoms)
+    ! Aux value used for calculation of gdr
+    denom_nid = ((1.d0*n_steps / freq_sample) * n_atoms)  
 
 !-----5.1 MAIN LOOP TO GENERATE CONFIGURATIONS
-    CALL initialise_output()
+    CALL initialise_output_samples()
     
-    accepted_moves_r = 0
-    accepted_moves_v = 0
-    sample_counter = 1
-    attempts_r = 0
-    attempts_v = 0
     DO ii = 1, n_steps
-        !TODO 
-        !Attempt to move npart before attempting to change V:
+        ! Attempt to move r of n_part (average) before attempting to change V
         CALL RANDOM_NUMBER(rand)
         rand_id =  rand * (n_atoms + 1) + 1
         IF (rand_id .LT. n_atoms) THEN
@@ -71,70 +63,35 @@ PROGRAM mc_npt
                         accepted_moves_r)
             attempts_r = attempts_r + 1
         ELSE 
-            CALL mc_vol(p_ref, n_atoms, r, L, dv, beta, r_crit, &
+            CALL mc_vol(n_atoms, p_ref, beta, dv, r_crit, r, L, &
                         accepted_moves_v)
             attempts_v = attempts_v + 1
         ENDIF
       
         IF (MOD(ii, freq_sample) .EQ. 0) THEN
             rho = n_atoms / (L**3)
-            nid = 4.0 / 3.0 * PI * rho
-            CALL sample(r, n_atoms, L, r_crit, u, p_pot, gdr, rho, &
-                        nid, denom_nid)
-            !we compute the pressure from the virial to make sure its ok
-            !(we need rho with new boxlength)
+            nid = 4.0 / 3.0 * PI * rho  ! Aux value used for calculation of gdr
+
+            CALL sample(n_atoms, r, L, r_crit, rho, nid, denom_nid, &
+                  r_crit_gdr, nbins_gdr, u, p_pot, gdr)
             
-            Ptail = Ptail_rho2 * rho**2
-            Utail = Utail_rho * rho
-            WRITE(5, *) samp_count, p_pot, Ptail, rho*tref, &
-                       p_pot+Ptail+rho*tref
-            WRITE(16, *) samp_count, u+Utail
-            WRITE(17, *) L
-            
-            sample_count = sample_count + 1
+            CALL write_sample(sample_counter, p_tail_rho2, u_tail_rho, &
+                              rho, p_pot, t_ref, u, L)
+                        
+            sample_counter = sample_counter + 1
         ENDIF
     ENDDO
-
-    close(5)
-    close(16)
-    close(17)
     
-
-    ! Print and write acceptance rates
-    write(*,*) "samples=", sample_count
-    write(*,*) "fraction of accepted moves in r =", &
-                (1.0*accepted_moves_r) / attempts_r
-    write(*,*) "fraction of accepted moves in v =", &
-                (1.0*accepted_moves_v) / attempts_v
+    CALL terminate_output_samples()
     
-    OPEN(12, file='acceptance_rate.dat')
-    write(12,*) (1.0*accepted_moves_r) / attempts_r
-    write(12,*) (1.0*accepted_moves_v) / attempts_v
-    CLOSE(12)
+    CALL write_acceptance_rates(sample_counter, accepted_moves_r, attempts_r, &
+                                accepted_moves_v, attempts_v)
+    
+    CALL normalise_and_write_gdr(nbins_gdr, gdr, dr_gdr)
+    
+    CALL write_last_positions(n_atoms, r, sigma)
 
 END PROGRAM mc_npt
-
-!-----5.2 Normalise gdr & save, simil for vacf and r2 
-!     write(filename, "('gdr',i0,'.dat')") actual_it
-!     open(12, file= trim(adjustl(filename)))
-!     DO is = 1,nb_gdr
-!       vb=((is+1)**3-is**3)*delg**3
-!       r_gdr=delg*(is+1.0/2.0)
-!       WRITE(12,*) r_gdr, gdr(is)/vb
-!     ENDDO
-!     CLOSE(12)
-
-
-!-----6. Saving last configuration in A and A/ps 
-!     open(11,file='conf_MC.data',status='unknown')
-!     do ii = 1,natoms
-!        write(11,*) (r(jj,ii)*sigma,jj=1,3)
-!     end do         
-!     write(11,*) boxlength*sigma
-!     close(11)
-
-!     stop
-!     end program
 
 
 
@@ -253,7 +210,7 @@ END SUBROUTINE read_initial_positions
 
 
 
-SUBROUTINE initialise_output()
+SUBROUTINE initialise_output_samples()
     IMPLICIT NONE
     CHARACTER(LEN = 256) :: filename
     INTEGER :: id
@@ -263,22 +220,65 @@ SUBROUTINE initialise_output()
     CLOSE(1)
 
     WRITE(filename, "('pressure_',I0,'.dat')") id
-    OPEN(11, FILE = TRIM(ADJUSTL(filename)))
+    OPEN(11, FILE=TRIM(ADJUSTL(filename)))
     WRITE(filename, "('energy_',I0,'.dat')") id
-    OPEN(12, FILE = TRIM(ADJUSTL(filename)))
+    OPEN(12, FILE=TRIM(ADJUSTL(filename)))
     WRITE(filename, "('boxlength_',I0,'.dat')") id
-    OPEN(13, FILE = TRIM(ADJUSTL(filename)))
+    OPEN(13, FILE=TRIM(ADJUSTL(filename)))
 
-END SUBROUTINE initialise_output
-
-
+END SUBROUTINE initialise_output_samples
 
 
-!********************************************************
-!********************************************************
-!              subroutine reduced
-!********************************************************
-!********************************************************
+
+SUBROUTINE terminate_output_samples()
+    CLOSE(11)
+    CLOSE(12)
+    CLOSE(13)
+END SUBROUTINE
+
+
+
+SUBROUTINE write_sample(sample_counter, p_tail_rho2, u_tail_rho, rho, &
+                        p_pot, t_ref, u, L)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: sample_counter
+    DOUBLE PRECISION, INTENT(IN) :: p_tail_rho2, u_tail_rho, rho, p_pot, &
+                                    t_ref, u, L
+    DOUBLE PRECISION :: p_tail, u_tail
+
+    p_tail = p_tail_rho2 * rho**2
+    u_tail = u_tail_rho * rho
+    
+    ! Compute virial pressure to compare with imposed pressure
+    WRITE(11, *) sample_counter, p_pot, p_tail, rho * t_ref, &
+                 p_pot + p_tail + rho * t_ref
+    WRITE(12, *) sample_counter, u + u_tail
+    WRITE(13, *) sample_counter, L
+
+END SUBROUTINE write_sample
+
+
+
+SUBROUTINE write_acceptance_rates(sample_counter, accepted_moves_r, &
+                                  attempts_r, accepted_moves_v, attempts_v)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: sample_counter, accepted_moves_r, attempts_r, &
+                           accepted_moves_v, attempts_v
+
+    WRITE(*, *) "samples = ", sample_counter
+    WRITE(*, *) "fraction of accepted moves in r = ", &
+                (1.0 * accepted_moves_r) / attempts_r
+    WRITE(*, *) "fraction of accepted moves in v = ", &
+                (1.0 * accepted_moves_v) / attempts_v
+    
+    OPEN(14, FILE='acceptance_rate.dat')
+    WRITE(14, *) (1.0 * accepted_moves_r) / attempts_r
+    WRITE(14, *) (1.0 * accepted_moves_v) / attempts_v
+    CLOSE(14)
+
+END SUBROUTINE write_acceptance_rates
+
+
 
 SUBROUTINE reduce_units(n_atoms, &
                               r, &
@@ -295,234 +295,276 @@ SUBROUTINE reduce_units(n_atoms, &
     t_ref = t_ref / eps
     L = L / sigma
     DO ii = 1, n_atoms
-       DO jj = 1, 3
-          r(jj, ii) = r(jj, ii) / sigma 
-       ENDDO
+        DO jj = 1, 3
+            r(jj, ii) = r(jj, ii) / sigma 
+        ENDDO
     ENDDO
 
 END SUBROUTINE reduce_units
 
-!********************************************************
-!********************************************************
-!              subroutine mcvol
-!********************************************************
-!********************************************************
-!     SUBROUTINE mcvol(P, npart, r, L, delv, beta, rc,
-!    &                 acc_moves_v)
-
-!     implicit double precision (a-h,o-z)
-!     dimension r(3,1000)
-!     double precision L, LN, lnVN, VN
-!     integer ii, jj, acc_moves_v
-!     
-!     call total_energy(r, rc, L, entot_old, npart)
-
-!     V0 = L**3
-!     !random walk on ln(V):
-!     lnVN = log(V0) + (rand()-0.5)*delv
-!     VN = exp(lnVN)
-!     LN = VN**(1.0/3.0)
-!     
-!     !reescale particles:
-!     do ii=1,npart 
-!       do jj=1,3
-!         r(jj,ii) = r(jj,ii)*LN/L
-!       enddo
-!     enddo
-
-!     call total_energy(r, rc, LN, entot_new, npart)
-
-!     arg = -beta*( entot_new - entot_old + P*(VN-V0) -
-!    &      (npart+1)*log(VN/V0)/beta )
-
-!     !If rejected, return particles to their original scaling+
-!     if (rand() .gt. exp(arg)) then
-!       do ii=1,npart
-!         do jj=1,3
-!           r(jj,ii) = r(jj,ii)*L/LN
-!         enddo
-!       enddo
-!     else !if accepted, r already changed, update L and count move
-!       acc_moves_v = acc_moves_v + 1
-!       L=LN
-!     endif
-!     
-!     RETURN
-!     END
 
 
+SUBROUTINE mc_vol(n_atoms, p_ref, beta, dv, r_crit, r, L, accepted_moves_v)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n_atoms
+    DOUBLE PRECISION, INTENT(IN) :: p_ref, beta, dv, r_crit
+    DOUBLE PRECISION, INTENT(INOUT) :: r(3, n_atoms), L
+    INTEGER, INTENT(INOUT) :: accepted_moves_v
+    DOUBLE PRECISION :: Etot_old, Etot_new, v0, LN, ln_vN, vN, rand, arg
+    INTEGER :: ii, jj
+    
+    CALL total_energy(n_atoms, r, r_crit, L, Etot_old)
 
-!********************************************************
-!********************************************************
-!              subroutine mcmove
-!********************************************************
-!********************************************************
-!     SUBROUTINE mcmove(npart, r, delr, beta, rc, boxlength, 
-!    &                  accepted_moves)
-!       implicit double precision (a-h, o-z)
-!       dimension r(3,1000), ri_new(3), ri_old(3)
-!       integer npart, jj, o, accepted_moves
+    v0 = L**3
+    ! Random walk on ln(V):
+    CALL RANDOM_NUMBER(rand)
+    ln_vN = LOG(v0) + (rand - 0.5) * dv
+    vN = EXP(ln_vN)
+    LN = vN**(1.0/3.0)
+    
+    ! Rescale particles:
+    DO ii = 1, n_atoms 
+         DO jj=1,3
+              r(jj,ii) = r(jj,ii) * LN / L
+         ENDDO
+    ENDDO
 
-!       o = int(rand()*npart) + 1 !select random particle
-!       
-!       do jj = 1,3 
-!         ri_old(jj) = r(jj,o)
-!         ri_new(jj) = r(jj,o) + (rand()-0.5)*delr
-!       enddo
-!       
-!       call energy(npart, o, ri_new, r, en_new, rc, boxlength)
-!       call energy(npart, o, ri_old, r, en_old, rc, boxlength)
+    CALL total_energy(n_atoms, r, r_crit, LN, Etot_new)
 
-!       !Acceptance rule
-!       if (rand() .lt. exp(-beta*(en_new-en_old)) ) then
-!         do jj=1,3
-!           r(jj,o) = ri_new(jj)
-!         enddo
-!         accepted_moves = accepted_moves + 1
-!       endif
+    arg = - beta * ( Etot_new - Etot_old + p_ref * (vN - v0) - &
+                     (n_atoms + 1) * log(vN/v0) / beta )
 
-!     end
-!********************************************************
-!********************************************************
-!              subroutine total energy
-!********************************************************
-!********************************************************
-!     SUBROUTINE total_energy(r, rc, boxlength, entot, npart)
-!     implicit double precision (a-h, o-z)
-!     dimension r(3, 1000)
-!     integer ii, jj
+    ! If rejected, return particles to their original scaling+
+    CALL RANDOM_NUMBER(rand)
+    IF (rand .GT. exp(arg)) THEN
+        DO ii=1, n_atoms
+            DO jj=1,3
+                r(jj,ii) = r(jj,ii) * L / LN
+            ENDDO
+        ENDDO
+    ELSE ! If accepted, r already changed, update L and count move
+        accepted_moves_v = accepted_moves_v + 1
+        L = LN
+    ENDIF
 
-!     entot = 0;
-!     do ii = 1,npart-1
-!       do jj = ii+1, npart
-!         call lj(ii,jj,r,boxlength,rc,pot,rij_fij)
-!         entot = entot + pot
-!       enddo
-!     enddo
-!     
-!     RETURN
-!     END
+END
 
-!********************************************************
-!********************************************************
-!              subroutine energy
-!********************************************************
-!********************************************************
-!     SUBROUTINE energy(npart, o, ri, r, en, rc, boxlength)
-!       implicit double precision (a-h, o-z)
-!       dimension r(3,1000), ri(3)
-!       integer npart, jj, o
-!       
-!       do jj = 1,3
-!         r(jj,o)=ri(jj)
-!       enddo
 
-!       en = 0
-!       do jj=1,npart
-!         if (jj .ne. o) then
-!           call lj(o,jj,r,boxlength,rc,pot,rij_fij)
-!           en = en + pot
-!         endif
-!       enddo
-!       
-!     RETURN
-!     END
 
-!********************************************************
-!********************************************************
-!              subroutine Lennard-Jones
-!********************************************************
-!********************************************************
+SUBROUTINE mc_pos(n_atoms, r, dr, beta, r_crit, L, accepted_moves_r)
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: n_atoms
+      DOUBLE PRECISION, INTENT(INOUT) :: r(3, n_atoms)
+      DOUBLE PRECISION, INTENT(IN) :: dr, beta, r_crit, L
+      INTEGER, INTENT(INOUT) :: accepted_moves_r
+      DOUBLE PRECISION :: rand, ri_new(3), ri_old(3), E_new, E_old
+      INTEGER :: jj, o
+      
+      CALL RANDOM_NUMBER(rand)
+      o = INT(rand * n_atoms) + 1  ! Select random particle
+      
+      DO jj = 1, 3 
+          CALL RANDOM_NUMBER(rand)
+          ri_old(jj) = r(jj, o)
+          ri_new(jj) = r(jj, o) + (rand - 0.5) * dr
+      ENDDO
+      
+      DO jj = 1, 3
+          r(jj, o) = ri_new(jj)
+      ENDDO
+      CALL energy_ii(n_atoms, o, r, r_crit, L, E_new)
+      
+      DO jj = 1, 3
+          r(jj, o) = ri_old(jj)  ! We return r to its old state!
+      ENDDO
+      CALL energy_ii(n_atoms, o, r, r_crit, L, E_old)
+      
+      ! Acceptance rule
+      CALL RANDOM_NUMBER(rand)
+      IF (rand .LT. EXP(-beta * (E_new - E_old))) THEN
+          DO jj = 1, 3
+              r(jj, o) = ri_new(jj)
+            ENDDO
+          accepted_moves_r = accepted_moves_r + 1
+      ENDIF
 
-!     subroutine lj(is,js,r,boxlength,rc,pot,rij_fij)
-!     implicit double precision(a-h,o-z)
-!     dimension r(3,1000), rij(3)
-!     integer is, js
+END
 
-!     rr2 = 0.d0
-!     pot = 0.d0
-!     rij_fij = 0.d0
-!     do l = 1,3
-!        rijl = r(l,js) - r(l,is)
-!        rij(l) = rijl - boxlength*dnint(rijl/boxlength)
-!        rr2 = rr2 + rij(l)*rij(l)
-!     end do
 
-!     rr = dsqrt(rr2)
 
-!     if (rr.lt.rc) then
-!       ynvrr2 = 1.d0/rr2
-!       ynvrr6 = ynvrr2*ynvrr2*ynvrr2
-!       ynvrr12 = ynvrr6*ynvrr6
-!       rij_fij = rr2*24.d0*(2.d0*ynvrr12-ynvrr6)*ynvrr2
-!       pot = 4.d0*(ynvrr12-ynvrr6) 
-!     else
-!       pot = 0
-!       rij_fij = 0
-!     endif
-!     
-!     return
-!     end
+SUBROUTINE total_energy(n_atoms, r, r_crit, L, E_tot)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n_atoms
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), r_crit, L
+    DOUBLE PRECISION, INTENT(OUT) :: E_tot
+    DOUBLE PRECISION :: pot, dummy 
+    INTEGER ii, jj
 
-!********************************************************
-!********************************************************
-!              subroutine sample
-!********************************************************
-!********************************************************
-!     SUBROUTINE sample(r,npart,boxlength,rc,u,p_pot,gdr, rho, nid,
-!    &                  denom_nid)
-!       implicit double precision (a-h,o-z)
-!       dimension r(3,1000), gdr(500)
-!       integer ii, jj, npart, ncycle, nsamp
-!       double precision nid
-!       u = 0
-!       p_pot = 0
+    E_tot = 0
+    DO ii = 1, n_atoms - 1
+        DO jj = ii + 1, n_atoms
+            CALL lj(ii, jj, n_atoms, r, L, r_crit, pot, dummy)
+            E_tot = E_tot + pot
+        ENDDO
+    ENDDO
+    
+END SUBROUTINE total_energy
 
-!       do ii = 1, npart-1
-!         do jj = ii+1, npart
-!             call lj(ii,jj,r,boxlength,rc,pot,rij_fij)
-!             u = u + pot
-!             p_pot = p_pot + rij_fij
-!             call function_gdr(ii,jj,r,boxlength,rc,gdr, rho, nid,
-!    &                          denom_nid)
-!         enddo
-!       enddo
-!       p_pot = p_pot/(3*boxlength**3)
-!     END
 
-!********************************************************
-!********************************************************
-!              subroutine gdr
-!********************************************************
-!********************************************************
-!     SUBROUTINE function_gdr(is,js,r,boxlength,rc,gdr, rho, nid,
-!    &                        denom_nid)
-!       implicit double precision (a-h,o-z)
-!       dimension r(3,1000), gdr(500), rij(3)
-!       integer is, l, ncycle, nsamp, natoms
-!       double precision nid
 
-!       rr2 = 0.d0
-!       pot = 0.d0
-!       do l = 1,3
-!         rijl = r(l,js) - r(l,is)
-!         rij(l) = rijl - boxlength*dnint(rijl/boxlength)
-!         rr2 = rr2 + rij(l)*rij(l)
-!       end do
+SUBROUTINE energy_ii(n_atoms, ii, r, r_crit, L, E)
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: n_atoms, ii
+      DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), r_crit, L
+      DOUBLE PRECISION, INTENT(OUT) :: E
+      DOUBLE PRECISION :: pot, dummy
+      INTEGER :: jj
+      
+      E = 0
+      DO jj = 1, n_atoms
+          IF (jj .NE. ii) THEN
+              CALL lj(ii, jj, n_atoms, r, L, r_crit, pot, dummy)
+              E = E + pot
+          ENDIF
+      ENDDO
+      
+END SUBROUTINE energy_ii
 
-!       rr = dsqrt(rr2)
-!     
-!       nb_gdr=500
-!       rc_gdr=5
-!       
-!       !we have to initialize all bins to 0...
 
-!       delg=rc_gdr/nb_gdr
 
-!       IF (rr.lt.rc_gdr) THEN
-!         ni=nint(rr/delg)
-!         gdr(ni)=gdr(ni)+2.d0/(denom_nid*nid)
-!         !write(*,*) ni, gdr(ni)
-!       END IF
-!       
-!     END
+SUBROUTINE lj(is, js, n_atoms, r, L, r_crit, pot, rij_fij)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: is, js, n_atoms
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit
+    DOUBLE PRECISION, INTENT(OUT) :: pot, rij_fij
+    DOUBLE PRECISION :: rij(3), rijl, rr2, rr
+    DOUBLE PRECISION :: ynvrr2, ynvrr6, ynvrr12
+    INTEGER :: kk
+
+    rr2 = 0.d0
+    pot = 0.d0
+    rij_fij = 0.d0
+    DO kk = 1, 3
+        rijl = r(kk, js) - r(kk, is)
+        rij(kk) = rijl - L * DNINT(rijl / L)
+        rr2 = rr2 + rij(kk) * rij(kk)
+    ENDDO
+
+    rr = dsqrt(rr2)
+
+    IF (rr .LT. r_crit) THEN
+        ynvrr2 = 1.d0/rr2
+        ynvrr6 = ynvrr2*ynvrr2*ynvrr2
+        ynvrr12 = ynvrr6*ynvrr6
+        rij_fij = rr2*24.d0*(2.d0*ynvrr12-ynvrr6)*ynvrr2
+        pot = 4.d0*(ynvrr12-ynvrr6) 
+    ELSE
+        pot = 0
+        rij_fij = 0
+    ENDIF
+    
+END SUBROUTINE lj
+
+
+
+SUBROUTINE sample(n_atoms, r, L, r_crit, rho, nid, denom_nid, &
+                  r_crit_gdr, nbins_gdr, u, p_pot, gdr)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n_atoms, nbins_gdr
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit, rho, nid, &
+                                    denom_nid, r_crit_gdr
+    DOUBLE PRECISION, INTENT(OUT) :: u, p_pot
+    DOUBLE PRECISION, INTENT(INOUT) :: gdr(nbins_gdr)
+    INTEGER :: ii, jj
+    DOUBLE PRECISION :: pot, rij_fij
+
+    u = 0
+    p_pot = 0
+    DO ii = 1, n_atoms - 1
+        DO jj = ii + 1, n_atoms
+            CALL lj(ii, jj, n_atoms, r, L, r_crit, pot, rij_fij)
+            u = u + pot
+            p_pot = p_pot + rij_fij
+
+            CALL function_gdr(ii, jj, n_atoms, r, L, r_crit_gdr, rho, nid, &
+                              denom_nid, nbins_gdr, gdr)
+        ENDDO
+    ENDDO
+    p_pot = p_pot / (3 * L**3)
+
+END SUBROUTINE sample
+
+
+
+SUBROUTINE function_gdr(is, js, n_atoms, r, L, r_crit_gdr, rho, nid, denom_nid, &
+                        nbins_gdr, gdr)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: is, js, n_atoms, nbins_gdr
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit_gdr, rho, nid, denom_nid
+    DOUBLE PRECISION, INTENT(INOUT) :: gdr(nbins_gdr)
+    INTEGER :: kk, ni
+    DOUBLE PRECISION :: pot, rr2, rijl, rij(3), rr, delg
+
+    pot = 0.d0
+    rr2 = 0.d0
+    DO kk = 1, 3
+        rijl = r(kk, js) - r(kk, is)
+        rij(kk) = rijl - L * DNINT(rijl / L)
+        rr2 = rr2 + rij(kk) * rij(kk)
+    ENDDO
+
+    rr = DSQRT(rr2)
+  
+    !we have to initialize all bins to 0...
+
+    delg = r_crit_gdr / nbins_gdr
+
+    IF (rr .LT. r_crit_gdr) THEN
+        ni = NINT(rr / delg)
+        gdr(ni) = gdr(ni) + 2.d0 / (denom_nid * nid)
+        !write(*,*) ni, gdr(ni)
+    END IF
+    
+END
+
+
+
+SUBROUTINE normalise_and_write_gdr(nbins_gdr, gdr, dr_gdr)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: nbins_gdr
+    DOUBLE PRECISION, INTENT(IN) :: gdr(nbins_gdr), dr_gdr
+    CHARACTER(LEN = 256) :: filename
+    INTEGER :: id, ii
+    DOUBLE PRECISION :: vb, r_gdr
+    
+    OPEN(1, FILE="current_id.tmp", STATUS="OLD")
+    READ(1, *) id
+    CLOSE(1)
+
+    WRITE(filename, "('gdr_',i0,'.dat')") id
+    OPEN(15, FILE = TRIM(ADJUSTL(filename)))
+    DO ii = 1, nbins_gdr
+        vb = ((ii + 1)**3 - ii**3) * dr_gdr**3
+        r_gdr = dr_gdr * (ii + 1.0/2.0)
+        WRITE(15, *) r_gdr, gdr(ii)/vb
+    ENDDO
+    CLOSE(15)
+
+END SUBROUTINE normalise_and_write_gdr
+
+
+
+SUBROUTINE write_last_positions(n_atoms, r, sigma)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n_atoms
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), sigma
+    INTEGER :: ii, jj
+
+    OPEN(16, FILE='initial_pos.dat', STATUS='unknown')
+    ! Write in Amstrongs!!! Un-reduced positions!!
+    DO ii = 1, n_atoms
+       WRITE(16, *) (r(jj,ii) * sigma, jj=1,3)
+    ENDDO         
+    CLOSE(16)
+
+END SUBROUTINE write_last_positions
