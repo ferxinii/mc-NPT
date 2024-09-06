@@ -16,7 +16,7 @@ PROGRAM mc_npt
     DOUBLE PRECISION, ALLOCATABLE :: r(:, :)
     DOUBLE PRECISION, ALLOCATABLE :: gdr(:)
     ! ENERGY AND PRESSURE
-    DOUBLE PRECISION :: u_tail, u_tail_rho, p_tail, p_tail_rho2
+    DOUBLE PRECISION :: u_tail_rho, p_tail_rho2
     DOUBLE PRECISION :: u, p_pot, rho
     DOUBLE PRECISION :: denom_nid, nid
     ! COUNTERS
@@ -32,16 +32,11 @@ PROGRAM mc_npt
     CALL read_config(n_steps, freq_sample, n_atoms, mass, t_ref, &
                      sigma, eps, dr, dv, l, p_ref)
     ALLOCATE(r(3, n_atoms))
-
     CALL read_initial_positions(r, n_atoms, l)
 
     CALL reduce_units(n_atoms, r, l, t_ref, eps, sigma)
     beta = 1 / t_ref
 
-    WRITE(*, *) "l: ", l
-    WRITE(*, *) "t_ref: ", t_ref
-    WRITE(*, *) "r(1,1): ", r(1,1)
-     
     ALLOCATE(gdr(nbins_gdr))
     gdr = 0 
 
@@ -51,13 +46,12 @@ PROGRAM mc_npt
     ! Aux value used for calculation of gdr
     denom_nid = ((1.d0*n_steps / freq_sample) * n_atoms)  
 
-!-----5.1 MAIN LOOP TO GENERATE CONFIGURATIONS
     CALL initialise_output_samples()
     
     DO ii = 1, n_steps
         ! Attempt to move r of n_part (average) before attempting to change V
         CALL RANDOM_NUMBER(rand)
-        rand_id =  rand * (n_atoms + 1) + 1
+        rand_id =  INT(rand * (n_atoms + 1) + 1)
         IF (rand_id .LT. n_atoms) THEN
             CALL mc_pos(n_atoms, r, dr, beta, r_crit, L, &
                         accepted_moves_r)
@@ -72,7 +66,7 @@ PROGRAM mc_npt
             rho = n_atoms / (L**3)
             nid = 4.0 / 3.0 * PI * rho  ! Aux value used for calculation of gdr
 
-            CALL sample(n_atoms, r, L, r_crit, rho, nid, denom_nid, &
+            CALL sample(n_atoms, r, L, r_crit, nid, denom_nid, &
                   r_crit_gdr, nbins_gdr, u, p_pot, gdr)
             
             CALL write_sample(sample_counter, p_tail_rho2, u_tail_rho, &
@@ -112,7 +106,7 @@ SUBROUTINE read_config(n_steps, &
                                      dr, dv, l, p_ref
     CHARACTER(LEN = 256) :: dummy
     INTEGER ios
-    OPEN(1, FILE='config.data', STATUS='old', IOSTAT=ios)
+    OPEN(1, FILE='config.dat', STATUS='old', IOSTAT=ios)
     IF (ios /= 0) THEN
         WRITE(*,*) "Error opening file, ios = ", ios
         STOP
@@ -153,39 +147,42 @@ SUBROUTINE read_initial_positions(r, n_atoms, l)
     DOUBLE PRECISION, INTENT(IN) :: l
     DOUBLE PRECISION, INTENT(OUT) :: r(3, n_atoms)
     LOGICAL :: file_exists
-    CHARACTER(LEN = 256) :: dummy
     INTEGER :: n_lines, ios, divisions
     INTEGER :: ii, jj, kk, ls
     DOUBLE PRECISION :: delta_r
 
     ! Check if a file with previous positions exists
-    INQUIRE(FILE='initial_pos.dat', EXIST=file_exists)
+    INQUIRE(FILE='results/initial_pos.dat', EXIST=file_exists)
     IF (file_exists) THEN
-        OPEN(1, FILE='initial_pos.dat', STATUS='OLD')
+        OPEN(1, FILE='results/initial_pos.dat', STATUS='OLD')
         READ(1, '(A)')  ! Ignore first line
-        n_lines = 0
+        n_lines = 1
         ii = 1
         DO 
             READ(1, *, IOSTAT=ios) (r(jj,ii), jj=1,3)
             ! Check for EOF or out of bounds
             IF (ios /= 0 .or. n_lines - 1 >= n_atoms) EXIT  
             n_lines = n_lines + 1
+            ii = ii + 1
         ENDDO
         CLOSE(1)
         
         IF (n_lines /= n_atoms) THEN
             WRITE(*, '(A, I0, A, I0, A)') " Read ", n_lines, " initial &
                   &positions, but there are ", n_atoms, " atoms."
-            WRITE(*, *) "Creating uniform distribution of initial positions"
             WRITE(*, *)
             file_exists = .FALSE.
+        ELSE 
+            WRITE(*, '(A, I0, A)') "Succesfully read ", n_atoms, &
+                                   " initial positions"
         ENDIF
     ENDIF
     
     IF (.NOT. file_exists) THEN
+        WRITE(*, *) "Creating uniform distribution of initial positions"
         ! Uniform distribution of particles in the box
         divisions = INT(n_atoms**(1.0/3.0))
-        delta_r = l/ divisions
+        delta_r = l / divisions
         ls = 1
         DO ii = 0, divisions - 1
             DO jj = 0, divisions - 1
@@ -215,15 +212,15 @@ SUBROUTINE initialise_output_samples()
     CHARACTER(LEN = 256) :: filename
     INTEGER :: id
     
-    OPEN(1, FILE="current_id.tmp", STATUS="OLD")
+    OPEN(1, FILE="tmp/current_id.tmp", STATUS="OLD")
     READ(1, *) id
     CLOSE(1)
 
-    WRITE(filename, "('pressure_',I0,'.dat')") id
+    WRITE(filename, "('results/pressure_',I0,'.dat')") id
     OPEN(11, FILE=TRIM(ADJUSTL(filename)))
-    WRITE(filename, "('energy_',I0,'.dat')") id
+    WRITE(filename, "('results/energy_',I0,'.dat')") id
     OPEN(12, FILE=TRIM(ADJUSTL(filename)))
-    WRITE(filename, "('boxlength_',I0,'.dat')") id
+    WRITE(filename, "('results/boxlength_',I0,'.dat')") id
     OPEN(13, FILE=TRIM(ADJUSTL(filename)))
 
 END SUBROUTINE initialise_output_samples
@@ -265,13 +262,14 @@ SUBROUTINE write_acceptance_rates(sample_counter, accepted_moves_r, &
     INTEGER, INTENT(IN) :: sample_counter, accepted_moves_r, attempts_r, &
                            accepted_moves_v, attempts_v
 
-    WRITE(*, *) "samples = ", sample_counter
-    WRITE(*, *) "fraction of accepted moves in r = ", &
+    WRITE(*, *) "........ RATES: ........"
+    WRITE(*, '(A, I0)') " Total samples = ", sample_counter
+    WRITE(*, *) "Fraction of accepted moves in r = ", &
                 (1.0 * accepted_moves_r) / attempts_r
-    WRITE(*, *) "fraction of accepted moves in v = ", &
+    WRITE(*, *) "Fraction of accepted moves in v = ", &
                 (1.0 * accepted_moves_v) / attempts_v
     
-    OPEN(14, FILE='acceptance_rate.dat')
+    OPEN(14, FILE='tmp/acceptance_rate.tmp')
     WRITE(14, *) (1.0 * accepted_moves_r) / attempts_r
     WRITE(14, *) (1.0 * accepted_moves_v) / attempts_v
     CLOSE(14)
@@ -467,11 +465,11 @@ END SUBROUTINE lj
 
 
 
-SUBROUTINE sample(n_atoms, r, L, r_crit, rho, nid, denom_nid, &
+SUBROUTINE sample(n_atoms, r, L, r_crit, nid, denom_nid, &
                   r_crit_gdr, nbins_gdr, u, p_pot, gdr)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n_atoms, nbins_gdr
-    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit, rho, nid, &
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit, nid, &
                                     denom_nid, r_crit_gdr
     DOUBLE PRECISION, INTENT(OUT) :: u, p_pot
     DOUBLE PRECISION, INTENT(INOUT) :: gdr(nbins_gdr)
@@ -486,7 +484,7 @@ SUBROUTINE sample(n_atoms, r, L, r_crit, rho, nid, denom_nid, &
             u = u + pot
             p_pot = p_pot + rij_fij
 
-            CALL function_gdr(ii, jj, n_atoms, r, L, r_crit_gdr, rho, nid, &
+            CALL function_gdr(ii, jj, n_atoms, r, L, r_crit_gdr, nid, &
                               denom_nid, nbins_gdr, gdr)
         ENDDO
     ENDDO
@@ -496,11 +494,11 @@ END SUBROUTINE sample
 
 
 
-SUBROUTINE function_gdr(is, js, n_atoms, r, L, r_crit_gdr, rho, nid, denom_nid, &
+SUBROUTINE function_gdr(is, js, n_atoms, r, L, r_crit_gdr, nid, denom_nid, &
                         nbins_gdr, gdr)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: is, js, n_atoms, nbins_gdr
-    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit_gdr, rho, nid, denom_nid
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), L, r_crit_gdr, nid, denom_nid
     DOUBLE PRECISION, INTENT(INOUT) :: gdr(nbins_gdr)
     INTEGER :: kk, ni
     DOUBLE PRECISION :: pot, rr2, rijl, rij(3), rr, delg
@@ -515,8 +513,6 @@ SUBROUTINE function_gdr(is, js, n_atoms, r, L, r_crit_gdr, rho, nid, denom_nid, 
 
     rr = DSQRT(rr2)
   
-    !we have to initialize all bins to 0...
-
     delg = r_crit_gdr / nbins_gdr
 
     IF (rr .LT. r_crit_gdr) THEN
@@ -537,11 +533,11 @@ SUBROUTINE normalise_and_write_gdr(nbins_gdr, gdr, dr_gdr)
     INTEGER :: id, ii
     DOUBLE PRECISION :: vb, r_gdr
     
-    OPEN(1, FILE="current_id.tmp", STATUS="OLD")
+    OPEN(1, FILE="tmp/current_id.tmp", STATUS="OLD")
     READ(1, *) id
     CLOSE(1)
 
-    WRITE(filename, "('gdr_',i0,'.dat')") id
+    WRITE(filename, "('results/gdr_',i0,'.dat')") id
     OPEN(15, FILE = TRIM(ADJUSTL(filename)))
     DO ii = 1, nbins_gdr
         vb = ((ii + 1)**3 - ii**3) * dr_gdr**3
@@ -560,7 +556,7 @@ SUBROUTINE write_last_positions(n_atoms, r, sigma)
     DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), sigma
     INTEGER :: ii, jj
 
-    OPEN(16, FILE='initial_pos.dat', STATUS='unknown')
+    OPEN(16, FILE='results/initial_pos.dat', STATUS='unknown')
     ! Write in Amstrongs!!! Un-reduced positions!!
     DO ii = 1, n_atoms
        WRITE(16, *) (r(jj,ii) * sigma, jj=1,3)

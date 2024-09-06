@@ -1,12 +1,12 @@
 -------- MONTE CARLO CONFIG --------
-N_STEPS         5000000         
+N_STEPS         100000
 FREQ_SAMPLE     500
 ---------- PHYSICAL CTS ------------
 MASS(UMA)       39.948000000000000        
 SIGMA(Å)        3.4049999999999998
 EPSILON(K)      119.80000000000000     
 -------- ENSEMBLE VARIABLES --------
-N_ATOMS         500
+N_ATOMS         512
 PRESSURE_REF    15.000000000000000     
 T_REF(K)        239.6
 --- VARIABLES / INITIAL GUESSES ----
@@ -19,11 +19,3 @@ DELTAV          2.7231561677785131E-002
 **  ! DO NOT CHANGE FORMAT OF FILE ! **
 ** ONLY EDIT THE VALUES OF VARIABLES **
 ***************************************
-
- **************************************************
- 1.ncycl, nsamp (number of cycles between samples)
- 2.natoms
- 3.mass, Tref (Tref already in reduced units!)
- 4.sigma,epsil (LJ parameters in A and K)
- 5.deltar, deltav (time step in ps), ~0.05,20
- 6.pressure (reference, should be cte!)
