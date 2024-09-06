@@ -1,21 +1,21 @@
 -------- MONTE CARLO CONFIG --------
-N_STEPS         100000
-FREQ_SAMPLE     500
+ N_STEPS     1000000
+ FREQ_SAMPLE         500
 ---------- PHYSICAL CTS ------------
-MASS(UMA)       39.948000000000000        
-SIGMA(Å)        3.4049999999999998
-EPSILON(K)      119.80000000000000     
+ MASS(UMA)   39.948001861572266     
+ SIGMA(Å)   3.4049999713897705     
+ EPSILON(K)   119.80000305175781     
 -------- ENSEMBLE VARIABLES --------
-N_ATOMS         512
-PRESSURE_REF    15.000000000000000     
-T_REF(K)        239.6
+ N_ATOMS         512
+ PRESSURE_REF   15.000000000000000     
+ T_REF(K)   239.60000610351562     
 --- VARIABLES / INITIAL GUESSES ----
-L(Å)            27.195322727449064     
-DELTAR          0.20660360135547376
-DELTAV          2.7231561677785131E-002
+ L(Å)   61.299999237060547     
+ DELTAR  0.20660360135547376     
+ DELTAV   2.2692967163083447E-002
 
 
-***************************************
-**  ! DO NOT CHANGE FORMAT OF FILE ! **
-** ONLY EDIT THE VALUES OF VARIABLES **
-***************************************
+ ***************************************
+ **  ! DO NOT CHANGE FORMAT OF FILE ! **
+ ** ONLY EDIT THE VALUES OF VARIABLES **
+ ***************************************
