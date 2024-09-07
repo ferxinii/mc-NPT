@@ -143,9 +143,9 @@ SUBROUTINE read_initial_positions(r, n_atoms, l)
     DOUBLE PRECISION :: delta_r
 
     ! Check if a file with previous positions exists
-    INQUIRE(FILE='initial_pos.dat', EXIST=file_exists)
+    INQUIRE(FILE='tmp/initial_pos.dat', EXIST=file_exists)
     IF (file_exists) THEN
-        OPEN(1, FILE='initial_pos.dat', STATUS='OLD')
+        OPEN(1, FILE='tmp/initial_pos.dat', STATUS='OLD')
         !READ(1, '(A)') l ! Ignore first line
         n_lines = 0
         ii = 1
@@ -548,7 +548,7 @@ SUBROUTINE write_last_positions(n_atoms, r, sigma, l)
     DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), sigma, l
     INTEGER :: ii, jj
 
-    OPEN(16, FILE='initial_pos.dat', STATUS='unknown')
+    OPEN(16, FILE='tmp/initial_pos.dat', STATUS='unknown')
     ! Write in Amstrongs!!! Un-reduced positions!!
     DO ii = 1, n_atoms
        WRITE(16, *) (r(jj,ii) * sigma, jj=1,3)
