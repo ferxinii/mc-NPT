@@ -24,7 +24,13 @@ To produce the plots, once *main* has run:
 ```
 
 ## Some results
-The following are the results for the simulation of a system of Argon particles ()
+The following are the results for the simulation of a system of Argon particle, characterized by the following parameters:
+| Mass (uma) | ε/k_B (K) | σ (Å) |
+| --- | --- | ---|
+| 39.948 | 119.8 | 3.405 |
+
+The pressure is varied between 0.15 and 15 in 30 uniformly distributed steps. Each configuraton of (N, P, T) is sampled every 500 MC steps for a total of 2000 samples.
+
 
 <p align="center">
   <img src="/example/pressure.png" alt="Pressure" style="width: 400px;">
