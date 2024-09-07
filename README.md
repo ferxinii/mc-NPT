@@ -14,11 +14,11 @@ The code uses the Metropolis method to sample the configuration space of the sys
 [ferxinii@mb ~/mc-NPT]$ make
 [ferxinii@mb ~/mc-NPT]$ ./main
 ```
-The executable *mc_sampling* is called by *main*, and is responsible for sampling a single configuration of (N, P, T) by reading the configuration file *config.dat*. The executable *main* is responsible for managing the sweep of parameters explored (Varying P), updating *config.dat*, calling *mc_sampling* and saving the correct results.
+The executable *mc_sampling* is called by *main*, and is responsible for sampling a single configuration of (N, P, T) by reading the configuration file *config.dat*. The executable *main* is responsible for managing the sweep of parameters explored (varying P), updating *config.dat*, calling *mc_sampling* and saving the correct results.
 
 Results are saved in *results/*. Auxiliary files are stored in *tmp/*.
 
-To produce the plots, once *main* has run:
+To produce the plots, once *main* has finished the sweep:
 ```console
 [ferxinii@mb ~/mc-NPT]$ gnuplot plot.gnu
 ```
