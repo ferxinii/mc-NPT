@@ -7,7 +7,7 @@ The partition function of the ensemble is:
 Q(N,P,T) = \frac{\beta P}{\lambda ^{3N}N!}\int dV V^N e^{-\beta PV} \int {d\vec{s}}^N e^{-\beta U(\vec{s}^N;L)} = \beta P\int dV e^{-\beta PV} Q (N,V,T)
 ```
 
-The code uses the Metropolis method to sample the configuration space of the system. For more details regarding Monte Carlo simulations and the implementation, reduced units and the computation of relevant quantities such as the energy and pressure, see *questions.pdf*.
+The code uses the Metropolis method to sample the configuration space of the system. For more details regarding Monte Carlo simulations, the Fortran implementation, reduced units and the computation of relevant quantities such as the energy and pressure, see *questions.pdf*.
 
 ## Compile and run
 ```console
@@ -23,4 +23,5 @@ To produce the plots, once *main* has run:
 [ferxinii@mb ~/mc-NPT]$ gnuplot plot.gnu
 ```
 
-
+## Some results
+The following are the results for the simulation of a system of Argon particles ()
