@@ -6,7 +6,7 @@ Monte Carlo simulations of an Isobaric-Isothermal Lennard-Jones system (constant
 ferxinii:~/mc-NPT$ make
 ferxinii:~/mc-NPT$ ./main
 ```
-The executable *mc_sampling* is called by *main*, and is responsible for sampling a single configuration of (N, P, T). Executable *main* is responsible for managing the sweep of parameters explored (Varying P).
+The executable *mc_sampling* is called by *main*, and is responsible for sampling a single configuration of (N, P, T) by reading the configuration file *config.dat*. Executable *main* is responsible for managing the sweep of parameters explored (Varying P), updating *config.dat*, calling *mc_sampling* and saving the correct results.
 
 Results are saved in *results/*. Auxiliary files are stored in *tmp/*.
 
