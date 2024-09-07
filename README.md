@@ -27,10 +27,10 @@ To produce the plots, once *main* has run:
 The following are the results for the simulation of a system of Argon particles ()
 
 <p align="center">
-  <img src="/example/pressure.png" alt="Pressure" style="width: 420px;">
-  <img src="/example/gdr.png" alt="Radial distribution function" style="width: 420px;">
+  <img src="/example/pressure.png" alt="Pressure" style="width: 400px;">
+  <img src="/example/gdr.png" alt="Radial distribution function" style="width: 400px;">
 </p>
 <p align="center">
-  <img src="/example/e_vs_density.png" alt="E vs rho" style="width: 450px;">
-  <img src="/example/p_vs_density.png" alt="P vs rho" style="width: 450px;">
+  <img src="/example/e_vs_density.png" alt="E vs rho" style="width: 400px;">
+  <img src="/example/p_vs_density.png" alt="P vs rho" style="width: 400px;">
 </p>
