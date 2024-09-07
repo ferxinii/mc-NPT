@@ -3,6 +3,6 @@ Monte Carlo simulations of an Isobaric-Isothermal Lennard-Jones system (constant
 
 ## Compile and run
 ```console
-make
-./main
+ferxinii:~/mc-NPT$ make
+ferxinii:~/mc-NPT$ ./main
 ```
