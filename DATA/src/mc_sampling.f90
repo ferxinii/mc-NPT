@@ -6,7 +6,7 @@ PROGRAM mc_npt
     ! PARAMETERS
     INTEGER, PARAMETER          :: nbins_gdr = 500
     DOUBLE PRECISION, PARAMETER :: r_crit = 2.5  ! Cutoff for LJ interactions
-    DOUBLE PRECISION, PARAMETER :: r_crit_gdr = 5
+    DOUBLE PRECISION, PARAMETER :: r_crit_gdr = 3.9
     DOUBLE PRECISION, PARAMETER :: dr_gdr = r_crit_gdr / nbins_gdr
     DOUBLE PRECISION, PARAMETER :: PI = 4.d0*ATAN(1.d0)
     ! CONFIGURATION
@@ -62,7 +62,7 @@ PROGRAM mc_npt
             attempts_v = attempts_v + 1
         ENDIF
       
-        IF (MOD(ii, freq_sample) .EQ. 0) THEN
+        IF ((ii .NE. 0) .AND. (MOD(ii, freq_sample) .EQ. 0)) THEN
             rho = n_atoms / (L**3)
             nid = 4.0 / 3.0 * PI * rho  ! Aux value used for calculation of gdr
 
@@ -83,23 +83,14 @@ PROGRAM mc_npt
     
     CALL normalise_and_write_gdr(nbins_gdr, gdr, dr_gdr)
     
-    CALL write_last_positions(n_atoms, r, sigma)
+    CALL write_last_positions(n_atoms, r, sigma, l)
 
 END PROGRAM mc_npt
 
 
 
-SUBROUTINE read_config(n_steps, &
-                       freq_sample, &
-                       n_atoms, &
-                       mass, &
-                       t_ref, &
-                       sigma, &
-                       eps, &
-                       dr, &
-                       dv, &
-                       l, &
-                       p_ref)
+SUBROUTINE read_config(n_steps, freq_sample, n_atoms, mass, t_ref, sigma, &
+                       eps, dr, dv, l, p_ref)
     IMPLICIT NONE
     INTEGER, INTENT(OUT) :: n_steps, freq_sample, n_atoms
     DOUBLE PRECISION, INTENT(OUT) :: mass, t_ref, sigma, eps, &
@@ -152,11 +143,11 @@ SUBROUTINE read_initial_positions(r, n_atoms, l)
     DOUBLE PRECISION :: delta_r
 
     ! Check if a file with previous positions exists
-    INQUIRE(FILE='results/initial_pos.dat', EXIST=file_exists)
+    INQUIRE(FILE='initial_pos.dat', EXIST=file_exists)
     IF (file_exists) THEN
-        OPEN(1, FILE='results/initial_pos.dat', STATUS='OLD')
-        READ(1, '(A)')  ! Ignore first line
-        n_lines = 1
+        OPEN(1, FILE='initial_pos.dat', STATUS='OLD')
+        !READ(1, '(A)') l ! Ignore first line
+        n_lines = 0
         ii = 1
         DO 
             READ(1, *, IOSTAT=ios) (r(jj,ii), jj=1,3)
@@ -218,10 +209,15 @@ SUBROUTINE initialise_output_samples()
 
     WRITE(filename, "('results/pressure_',I0,'.dat')") id
     OPEN(11, FILE=TRIM(ADJUSTL(filename)))
+    WRITE(11, *) "SAMPLE,  P POTENTIAL,  P TAIL,  P DYNAMIC,  P"
+
     WRITE(filename, "('results/energy_',I0,'.dat')") id
     OPEN(12, FILE=TRIM(ADJUSTL(filename)))
+    WRITE(12, *) "SAMPLE,  ENERGY"
+
     WRITE(filename, "('results/boxlength_',I0,'.dat')") id
     OPEN(13, FILE=TRIM(ADJUSTL(filename)))
+    WRITE(13, *) "SAMPLE,  BOXLENGTH"
 
 END SUBROUTINE initialise_output_samples
 
@@ -278,12 +274,7 @@ END SUBROUTINE write_acceptance_rates
 
 
 
-SUBROUTINE reduce_units(n_atoms, &
-                              r, &
-                              L, &
-                              t_ref, &
-                              eps, &
-                              sigma)
+SUBROUTINE reduce_units(n_atoms, r, L, t_ref, eps, sigma)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n_atoms
     DOUBLE PRECISION, INTENT(IN) :: eps, sigma
@@ -539,6 +530,7 @@ SUBROUTINE normalise_and_write_gdr(nbins_gdr, gdr, dr_gdr)
 
     WRITE(filename, "('results/gdr_',i0,'.dat')") id
     OPEN(15, FILE = TRIM(ADJUSTL(filename)))
+    WRITE(15, *) "RADIUS,  GDR(R)"
     DO ii = 1, nbins_gdr
         vb = ((ii + 1)**3 - ii**3) * dr_gdr**3
         r_gdr = dr_gdr * (ii + 1.0/2.0)
@@ -550,16 +542,21 @@ END SUBROUTINE normalise_and_write_gdr
 
 
 
-SUBROUTINE write_last_positions(n_atoms, r, sigma)
+SUBROUTINE write_last_positions(n_atoms, r, sigma, l)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n_atoms
-    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), sigma
+    DOUBLE PRECISION, INTENT(IN) :: r(3, n_atoms), sigma, l
     INTEGER :: ii, jj
 
-    OPEN(16, FILE='results/initial_pos.dat', STATUS='unknown')
+    OPEN(16, FILE='initial_pos.dat', STATUS='unknown')
     ! Write in Amstrongs!!! Un-reduced positions!!
     DO ii = 1, n_atoms
        WRITE(16, *) (r(jj,ii) * sigma, jj=1,3)
     ENDDO         
     CLOSE(16)
+
+    OPEN(17, FILE='tmp/last_boxlength.tmp')
+    WRITE(17, *) l * sigma
+    CLOSE(17)
+
 END SUBROUTINE write_last_positions

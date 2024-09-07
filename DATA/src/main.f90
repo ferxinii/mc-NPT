@@ -8,20 +8,20 @@ PROGRAM main
     DOUBLE PRECISION :: acceptance_r, acceptance_v
     ! -- Varying pressure --
     INTEGER :: steps_pressure, indicator_acc_r, indicator_acc_v
-    DOUBLE PRECISION :: pressure_vec(20)
+    DOUBLE PRECISION, ALLOCATABLE :: pressure_vec(:)
 
     INTEGER :: indicator_continue, ii, nsteps_reach_equil, nsteps_sampling  
     DOUBLE PRECISION :: p0, pf, dr_0, dv_0, l_0
     
 
     ! CONFIG
-    steps_pressure = 10
+    steps_pressure = 30
     p0 = 0.15
     pf = 15
 
     nsteps_reach_equil = 1000000 !10000000
 
-    nsteps_sampling =    5000000 !5000000
+    nsteps_sampling =    10000000 !5000000
     
     freq_sample = 500
 
@@ -32,16 +32,20 @@ PROGRAM main
     n_atoms = 512
     t_ref = 239.6
 
-    l_0 = 61.3
+    l_0 = 61.3  ! In Amstrongs
     dr_0 = 28
     dv_0 = 0.15
 
-
+    
+    CALL EXECUTE_COMMAND_LINE("rm -r results/*")
     ! Define pressure_vec
+    ALLOCATE(pressure_vec(steps_pressure))
+    OPEN(1, FILE='results/pressure_ref.dat')
     DO ii = 1, steps_pressure
         pressure_vec(ii) = p0 + (ii - 1) * (pf - p0) / (steps_pressure - 1)
+        WRITE(1, *) ii, pressure_vec(ii)
     ENDDO
-
+    CLOSE(1)
 
     dr = dr_0
     dv = dv_0
@@ -52,7 +56,7 @@ PROGRAM main
         WRITE(*, *)
         WRITE(*, '(A, A, F8.4)') " --- MAIN ---   ", "PRESSURE: ", p_ref
 
-        OPEN(1, file='tmp/current_id.tmp')
+        OPEN(1, fILE='tmp/current_id.tmp')
         WRITE(1,*) ii
         CLOSE(1)
 
@@ -76,11 +80,11 @@ PROGRAM main
             CALL EXECUTE_COMMAND_LINE("./mc_sampling > /dev/null")
 
             ! CHECK ACCEPTANCE RATE  
-            OPEN(2, file='tmp/acceptance_rate.tmp')
+            OPEN(2, FILE='tmp/acceptance_rate.tmp')
             READ(2,*) acceptance_r
             READ(2,*) acceptance_v
             CLOSE(2)
-
+            
             ! ADAPT delr, delv ACCORDINGLY
             indicator_acc_r = 1
             IF (acceptance_r .ge. 0.61) THEN
@@ -103,12 +107,19 @@ PROGRAM main
             IF ((indicator_acc_r .eq. 1) .and. (indicator_acc_v .eq. 1)) THEN
                 indicator_continue = indicator_continue + 1
             ENDIF
-
-            WRITE(*, '(A, I2, F8.3, A, F8.3, A, F8.4, A, F8.4, A, F8.4, I0)') &
-                       " --- MAIN ---           ", ii, p_ref, ", dr=", dr, &
+            
+            WRITE(*, '(A, A, F8.3, A, F8.4, A, F8.4, A, F8.4, I0)') &
+                       " --- MAIN ---           ", "dr=", dr, &
                        ", acc_r=", acceptance_r, ", dv=", dv, ", acc_v=", &
                        acceptance_v, indicator_continue
-            ENDDO
+
+            ! UPDATE LAST BOXLENGTH
+            OPEN(3, FILE="tmp/last_boxlength.tmp")
+            READ(3, *) l
+            CLOSE(3)
+            l = l
+
+        ENDDO
     ENDDO
 
 END PROGRAM main
