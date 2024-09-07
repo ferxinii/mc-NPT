@@ -36,7 +36,6 @@ The pressure is varied between 0.00613 GPa (0.15 in reduced units) and 0.604 GPa
 
 <br>
 <br>
-<br>
 
 <p align="center">
   <img src="/example/pressure.png" alt="Pressure" style="width: 400px;">
