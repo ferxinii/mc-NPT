@@ -34,7 +34,7 @@ The following are the results for the simulation of a system of Argon particle, 
 </div>
 The pressure is varied between 0.00613 GPa (0.15 in reduced units) and 0.604 GPa (15 in reduced units) in 30 uniformly distributed steps. The temperature is fixed at 239.6 K (2 in reduced units). Each macroscopic configuration of (N, P, T) is sampled every 500 MC steps for a total of 2000 samples.
 
-
+<br>
 
 
 <p align="center">
