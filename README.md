@@ -25,3 +25,8 @@ To produce the plots, once *main* has run:
 
 ## Some results
 The following are the results for the simulation of a system of Argon particles ()
+
+<p align="center">
+  <img src="./example/pressure.png" alt="Pressure" style="width: 400px;">
+  <img src="./example/energy.png" alt="Energy" style="width: 400px;">
+</p>
